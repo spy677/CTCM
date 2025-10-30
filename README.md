@@ -1,4 +1,4 @@
-## 📁 File Overview
+## File Overview
 
 This code contains the following key functional areas:
 
@@ -38,7 +38,7 @@ Each random number `rand(i)` is mapped to the corresponding segment in `F` and l
 ---
 
 ### `besseli_ratio(double v, double z)`  
-Computes the ratio \( I_{v+1}(z) / I_v(z) \) of modified Bessel functions, required for CIR or Bessel-type processes.
+Computes the ratio $$\( I_{v+1}(z) / I_v(z) \)$$ of modified Bessel functions, required for CIR or Bessel-type processes.
 
 ---
 
@@ -51,7 +51,7 @@ Used to generate paths of conditional variance under CTCM or CIR processes.
 ## 2. COS Expansion Methods
 
 ### `calculate_Vk_spx(double L, double A, int N)`
-Computes the **Fourier-Cosine coefficients \( V_k \)** for a given payoff function, required by the COS pricing method.
+Computes the **Fourier-Cosine coefficients $\( V_k \)$** for a given payoff function, required by the COS pricing method.
 
 ### `calculate_chi(double k, double a, double b)`
 Computes the cosine integral part of the Fourier projection.
