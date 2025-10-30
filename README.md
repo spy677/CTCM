@@ -1,258 +1,226 @@
-# Financial Mathematics Library - Complete Mathematical Framework
+Here's a detailed **README** for your code. I’ve structured it to explain the purpose, usage, and mathematical context of each major function and module in your code.
 
-## Mathematical Foundation
+---
 
-### Core Stochastic Processes
+# README
 
-#### 1. CGMY Jump-Diffusion Process
-The model combines a CGMY Lévy process with stochastic volatility:
+## Overview
 
-**Characteristic Function:**
-math
-\phi_{CGMY}(u) = C\Gamma(-Y)\left[(M - iu)^Y - M^Y + (G + iu)^Y - G^Y\right]
+This C++ code provides a high-performance numerical framework for computing characteristic functions, Runge-Kutta-based solutions of ODEs, and simulations for stochastic volatility and jump models in quantitative finance. It is particularly designed for option pricing and risk management using CGMY processes, leverage-neutral measures, and related processes.
 
+The code extensively uses **Eigen** for linear algebra and complex arithmetic, along with standard C++ random number generation and Boost for normal distribution functions.
 
-**Negative Jumps Only:**
-math
-\phi_{CGMY}^{-}(u) = C\Gamma(-Y)G^Y\left[\left(1 + \frac{iu}{G}\right)^Y - 1\right]
+---
 
+## Key Components
 
-#### 2. Heston Stochastic Volatility
-The volatility follows a mean-reverting square-root process:
-math
-dv_t = \kappa(\theta - v_t)dt + \sigma\sqrt{v_t}dW_t^v
+### 1. **Runge-Kutta ODE Solvers**
 
+The code provides several inline implementations of the 4th-order Runge-Kutta method (`RK4`) to numerically solve ODEs. These are essential for evolving characteristic functions or other time-dependent state variables.
 
-**Heston Characteristic Function:**
-math
-\phi_{Heston}(u) = \exp\left(A(T) + B(T)v_0\right)
+#### `rk4`
 
-where:
-math
-A(T) = \frac{\kappa\theta}{\sigma^2}\left[(\kappa - \delta)T - 2\log\left(1 - \frac{\delta - \kappa}{2\delta}(1 - e^{-\delta T})\right)\right]
+```cpp
+inline void rk4(void(*f)(const VectorXcd&, const VectorXd&, VectorXcd&), 
+                double t0, const VectorXcd& y0, const VectorXd& para, 
+                double h, double tf, MatrixXcd& y)
+```
 
-math
-B(T) = \frac{2iu(1 - e^{-\delta T})}{\delta + \kappa + (\delta - \kappa)e^{-\delta T}}
+* Solves ODE: `dy/dt = f(y, para)` over `[t0, tf]`.
+* `y0`: initial state.
+* `h`: time step size.
+* `y`: output matrix storing solution at each time step.
+* Internally uses **4th-order Runge-Kutta**:
 
-math
-\delta = \sqrt{\kappa^2 - 2i u \sigma^2}
+  * ( k_1 = f(y_i) )
+  * ( k_2 = f(y_i + h/2 * k_1) )
+  * ( k_3 = f(y_i + h/2 * k_2) )
+  * ( k_4 = f(y_i + h * k_3) )
+  * ( y_{i+1} = y_i + h/6 * (k_1 + 2*k_2 + 2*k_3 + k_4) )
 
+#### `rk4_2`
 
-## Option Pricing Framework
+```cpp
+inline void rk4_2(double t0, const VectorXcd& y0, const VectorXd& para, 
+                  double h, double tf, const VectorXd& u, MatrixXcd& y)
+```
 
-### 1. Fourier Cosine Method (COS)
+* Specialized version using a precomputed characteristic function (`kx = char_L1(para, u)`).
+* Useful for solving systems with an external control vector `u`.
 
-The COS method approximates the option price using Fourier cosine expansions:
+#### `rk4_T`
 
-**Call Option Price:**
-math
-C(t) \approx e^{-rT}\sum_{k=0}^{N-1} V_k \cdot \text{Re}\left[\phi\left(\frac{k\pi}{b-a}\right)e^{-ik\pi\frac{a}{b-a}}\right]
+```cpp
+inline void rk4_T(void(*f)(const VectorXcd&, const double&, const VectorXcd&, const VectorXd&, const VectorXd&, const VectorXcd&, VectorXcd&),
+                  double t0, const VectorXcd& y0, double h, double tf, const VectorXd& u, const VectorXd& para, MatrixXcd& y)
+```
 
+* Extended Runge-Kutta solver for **time-dependent characteristic functions** with multiple parameters.
+* Handles `psi_u`, `kappa_lnm`, `char_u` for advanced models like CGMY or jump-diffusions.
 
-**Coefficients:**
-- **V_k**: Fourier cosine coefficients for the payoff function
-- **χ and ψ functions**: Trigonometric integrals for coefficient calculation
+---
 
-### 2. Characteristic Function Decomposition
+### 2. **Characteristic Functions**
 
-The model decomposes the characteristic function into two factors:
+#### CGMY Characteristic Function
 
-**First Factor (Leverage-Neutral Measure):**
-math
-\phi_1(u) = \exp\left(A_1(T) + B_1(T)u_0\right)
+```cpp
+inline VectorXcd char_CGMY(const VectorXcd& u, double C, double G, double M, double Y)
+```
 
+* Computes the characteristic function for a CGMY process.
+* Parameters:
 
-**Second Factor (Volatility Process):**
-math
-\phi_2(u) = \exp\left(A_2(T) + B_2(T)u_{20}\right)
+  * `C, G, M, Y`: CGMY parameters controlling jump intensity, scale, and tail behavior.
+* Used for modeling Lévy processes with jumps.
 
+#### Derived Characteristic Functions
 
-**Combined Characteristic Function:**
-math
-\phi(u) = \phi_1(u) \cdot \phi_2(u)
+* `char_phi_1`, `char_L1`, `char_CGMY_neg`, `char_J1_neg`, `char_J1_lnm`
+* Provide variants of CGMY characteristic exponents for **negative jumps**, **leverage-neutral measure**, or controlled processes.
+* Example:
 
+```cpp
+inline VectorXcd char_L1(const VectorXd& para, const VectorXcd& u)
+```
 
-## Numerical Methods
+* Combines positive and negative jump contributions for a generalized process.
 
-### 1. Runge-Kutta ODE Solvers
+---
 
-**4th Order RK for ODEs:**
-math
-y_{n+1} = y_n + \frac{1}{6}(k_1 + 2k_2 + 2k_3 + k_4)
+### 3. **Coefficient Computations (`A` and `B`)**
 
-where:
-math
-k_1 = hf(t_n, y_n)
+The code implements routines to compute coefficients for analytical or semi-analytical pricing formulas.
 
-math
-k_2 = hf(t_n + \frac{h}{2}, y_n + \frac{k_1}{2})
+* `coef_B` / `coef_B_T` / `coef_B_T2`
+  Computes B-coefficients via Runge-Kutta integration of derivative functions (`derivative_B`, `derivative_B_T`, `derivative_B_T2`).
 
-math
-k_3 = hf(t_n + \frac{h}{2}, y_n + \frac{k_2}{2})
+* `coef_A_alltime` / `coef_A_notalltime` / `coef_A_T` / `coef_A_T2`
+  Computes cumulative sums of derivatives to form matrix `A` representing evolution of the system over time.
 
-math
-k_4 = hf(t_n + h, y_n + k_3)
+* `derivative_A` / `derivative_A_T2`
+  Defines the time derivative of A-coefficients: often proportional to the current state times a parameter.
 
+---
 
-### 2. Monte Carlo Simulation
+### 4. **Simulation of Stochastic Processes**
 
-**Variance Process Simulation:**
-math
-V_T = X_1 + X_2 + X_3
+#### Log-Stock Price Simulations
 
+* Functions `get_log_char`, `get_char`, `get_U` generate **Monte Carlo simulations** or characteristic function-based moments for stochastic volatility and jump-diffusion models.
+* Uses **Bessel functions** and **gamma distributions** for conditional sampling.
+* Key helper functions:
 
-**Component Distributions:**
-- **X₁**: Poisson-weighted Gamma distribution
-- **X₂**: Gamma distribution for stationary component
-- **X₃**: Bessel process component
+  * `sample_bessel`
+  * `besseli_ratio`
+  * `calculate_x_simu`
+  * `bisect_left` for interpolation.
 
-### 3. Bessel Process Sampling
+#### Quantile-Based Approximations
 
-**Bessel Ratio Approximation:**
-math
-\frac{I_{\nu+1}(z)}{I_\nu(z)} \approx \frac{z}{\nu + \frac{1}{2} + \sqrt{(\nu + \frac{3}{2})^2 + z^2}}
+* Functions `get_quants`, `get_conditional_V`, `get_X1`, `get_X2`, `get_X3`
+* Approximate stochastic integrals or conditional distributions for variance or jumps using **Poisson and Gamma distributions**.
 
+---
 
-**Normal Approximation:**
-math
-X \sim \mathcal{N}(\mu, \sigma^2)
+### 5. **Option Pricing Helpers**
 
-where:
-math
-\mu = \frac{z}{2}\frac{I_{\nu+1}(z)}{I_\nu(z)}
+* `calculate_Vk_spx`, `calculate_chi`, `calculate_psi`
+  Computes Fourier-cosine coefficients for **SPX option pricing**.
+* `implied_volatility`
+  Computes implied volatility using **root-finding on the Black-Scholes formula** (Boost normal CDF used).
 
-math
-\sigma^2 = \frac{z^2}{4}\left(\frac{I_{\nu+2}(z)}{I_\nu(z)} - \left(\frac{I_{\nu+1}(z)}{I_\nu(z)}\right)^2\right) + \mu - \mu^2
+---
 
+### 6. **Random Number Integration**
 
-## VIX Modeling
+* CSV-based random number loading:
 
-### VIX Formula Derivation
+```cpp
+csv2::Reader<...> csv;
+if (csv.mmap("rand.csv")) { ... }
+```
 
-**VIX² Calculation:**
-math
-VIX^2 = \frac{2}{T}\sum_{i=1}^N \frac{\Delta K_i}{K_i^2}e^{rT}Q(K_i) - \frac{1}{T}\left(\frac{F}{K_0} - 1\right)^2
+* Enables **reproducible simulations** by reading pre-generated uniform random numbers.
 
+---
 
-**Model Implementation:**
-math
-VIX = \sqrt{(a \cdot u_T + b \cdot v_T + c) + (a_2 \cdot u_{2T} + b_2 \cdot v_T + c_2)}
+## Dependencies
 
+* **Eigen**: For `MatrixXcd`, `VectorXd`, linear algebra operations.
+* **Boost**: For `boost::math::normal_distribution` (CDF and quantile).
+* **C++17** or higher (for `auto`, lambda functions, `tie`, `tuple`).
+* **csv2** library: For reading CSV files of random numbers.
+* **Eigen::Rand**: For gamma and normal sampling.
+* Standard `<random>`, `<chrono>`, `<tuple>`, `<cmath>`.
 
-## Implied Volatility Calculation
+---
 
-### Black-Scholes Implied Volatility
+## Usage
 
-**Call Option Formula:**
-math
-C = S_0N(d_1) - Ke^{-rT}N(d_2)
+1. Include the header:
 
-where:
-math
-d_1 = \frac{\ln(S_0/K) + (r + \sigma^2/2)T}{\sigma\sqrt{T}}
+```cpp
+#include "cgmy_rk4.hpp"
+```
 
-math
-d_2 = d_1 - \sigma\sqrt{T}
+2. Initialize parameters:
 
+```cpp
+VectorXd para(15); // Model parameters
+VectorXcd y0 = VectorXcd::Zero(n); // Initial state
+MatrixXcd y(steps, n);
+```
 
-**Root Finding:**
-math
-f(\sigma) = BS(\sigma) - C_{\text{market}} = 0
+3. Solve ODE using RK4:
 
+```cpp
+rk4(my_derivative_function, t0, y0, para, h, tf, y);
+```
 
-## Error Metrics for Calibration
+4. Compute characteristic functions:
 
-### 1. Mean Squared Error (MSE)
-math
-\text{MSE} = \frac{1}{N}\sum_{i=1}^N (\sigma_{\text{model}}^i - \sigma_{\text{market}}^i)^2
+```cpp
+VectorXcd u = VectorXcd::LinSpaced(n, 0.0, 1.0);
+VectorXcd phi = char_CGMY(u, C, G, M, Y);
+```
 
+5. Simulate stochastic paths:
 
-### 2. Absolute Error
-math
-\text{AbsError} = \frac{1}{N}\sum_{i=1}^N \sigma_{\text{model}}^i - \sigma_{\text{market}}^i
+```cpp
+VectorXd V_T = get_U(para, V_T, h, N_simu);
+```
 
+6. Calculate option-related coefficients:
 
+```cpp
+VectorXd Vk = calculate_Vk_spx(K, L, A, N);
+```
 
-### 3. Relative Error
-math
-\text{RelError} = \sqrt{\frac{1}{N}\sum_{i=1}^N \left(\frac{\sigma_{\text{model}}^i - \sigma_{\text{market}}^i}{\sigma_{\text{market}}^i}\right)^2}
+---
 
+## Notes on Numerical Stability
 
-### 4. Composite Error Function
-math
-\text{TotalError} = w_1\cdot\text{MSE}_{SPX} + w_2\cdot\text{MSE}_{VIX} + w_3\cdot\text{FuturesError}
+* All RK4 methods assume **small step size `h`** for accuracy.
+* Interpolation in `calculate_x_simu` prevents out-of-bounds sampling.
+* `besseli_ratio` and `sample_bessel` handle extreme values for Bessel functions to avoid overflow.
 
+---
 
-## Mathematical Components
+## References
 
-### 1. Leverage-Neutral Measure Transformation
+1. **Carr, Geman, Madan, Yor (2002)** – “The fine structure of asset returns: An empirical investigation.”
+2. **CGMY Lévy Process** – Characteristic function formulas.
+3. **Higham, N. J. (2002)** – “Accuracy and stability of numerical integration of ODEs.”
+4. **Eigen documentation** – Matrix and complex arithmetic.
+5. **Boost.Math** – Normal CDF and quantiles for implied volatility calculations.
 
-**Measure Change:**
-math
-\frac{d\mathbb{Q}^L}{d\mathbb{P}} = \exp\left(\int_0^T \lambda_s dW_s - \frac{1}{2}\int_0^T \lambda_s^2 ds\right)
+---
 
+This README should provide a full guide for using, understanding, and extending the code.
 
-**Characteristic Exponent Adjustment:**
-math
-\psi^L(u) = \psi(u) - iu\phi_1'(-i)
+---
 
+If you want, I can also **create a diagram showing the full workflow** from **input parameters → RK4 integration → characteristic function → Monte Carlo simulation → option pricing**. This helps new users quickly grasp the data flow.
 
-### 2. Fourier Inversion Techniques
-
-**Damping Factor:**
-math
-\hat{C}(\alpha) = e^{\alpha k}C(k)
-
-
-**Inversion Formula:**
-math
-C(k) = \frac{e^{-\alpha k}}{\pi}\int_0^\infty e^{-ivk}\hat{C}(v)dv
-
-
-### 3. Numerical Integration Schemes
-
-**Simpson's Rule:**
-math
-\int_a^b f(x)dx \approx \frac{h}{3}\left[f(x_0) + 4f(x_1) + 2f(x_2) + \cdots + f(x_n)\right]
-
-
-**Adaptive Grid:**
-- Fine grid near at-the-money options
-- Coarser grid for deep in/out-of-the-money options
-
-## Computational Optimizations
-
-### 1. Vectorized Operations
-- **Eigen library** for linear algebra
-- **Broadcasting** for batch computations
-- **Memory-efficient** matrix operations
-
-### 2. Parallel Processing
-- **Multi-threading** for Monte Carlo simulations
-- **Parallel ODE solving** for different strikes/maturities
-
-### 3. Caching and Memoization
-- **Pre-computed** characteristic functions
-- **Cached** numerical integrals
-- **Reusable** intermediate results
-
-## Model Parameters
-
-### Core Parameters (15-dimensional):
-1. **κ₁**: Mean reversion speed (1st factor)
-2. **θ₁**: Long-term mean (1st factor)
-3. **σ₁**: Volatility of vol (1st factor)
-4. **κ₂**: Mean reversion speed (2nd factor)
-5. **θ₂**: Long-term mean (2nd factor)
-6. **σ₂**: Volatility of vol (2nd factor)
-7. **C**: CGMY intensity parameter
-8. **G**: CGMY decay parameter (right tail)
-9. **M**: CGMY decay parameter (left tail)
-10. **Y**: CGMY stability parameter
-11. **ρ**: Leverage correlation
-12. **u₀**: Initial value (1st factor)
-13. **u₂₀**: Initial value (2nd factor)
-14. **v₀**: Initial variance
-15. **λ**: Jump intensity
-
-This mathematical framework provides a comprehensive foundation for pricing SPX and VIX options using advanced stochastic processes and Fourier-based methods.
+Do you want me to do that?
