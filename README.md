@@ -38,7 +38,7 @@ Each random number `rand(i)` is mapped to the corresponding segment in `F` and l
 ---
 
 ### `besseli_ratio(double v, double z)`  
-Computes the ratio $$\( I_{v+1}(z) / I_v(z) \)$$ of modified Bessel functions, required for CIR or Bessel-type processes.
+Computes the ratio $$ I_{v+1}(z) / I_v(z) $$ of modified Bessel functions, required for CIR or Bessel-type processes.
 
 ---
 
@@ -51,7 +51,7 @@ Used to generate paths of conditional variance under CTCM or CIR processes.
 ## 2. COS Expansion Methods
 
 ### `calculate_Vk_spx(double L, double A, int N)`
-Computes the **Fourier-Cosine coefficients $\( V_k \)$** for a given payoff function, required by the COS pricing method.
+Computes the **Fourier-Cosine coefficients $V_k$** for a given payoff function, required by the COS pricing method.
 
 ### `calculate_chi(double k, double a, double b)`
 Computes the cosine integral part of the Fourier projection.
@@ -73,7 +73,7 @@ Derives **quantitative parameters** for the conditional distribution of volatili
 ---
 
 ### `get_conditional_V(tuple<VectorXd, VectorXd, VectorXd> quants, double v0, const VectorXd& v_T, double T)`
-Generates the **conditional volatility path \( V_T \)** given the initial variance \( v_0 \) and terminal variance \( v_T \), using a Gamma–Poisson–Bessel decomposition.
+Generates the **conditional volatility path  $V_T$ ** given the initial variance  $v_0$  and terminal variance  $v_T$ , using a Gamma–Poisson–Bessel decomposition.
 
 ---
 
@@ -90,16 +90,15 @@ Helper components for `get_conditional_V`, producing:
 ### `char_func_Heston(const VectorXcd& u, const VectorXd& para, const VectorXd& v0, double T)`
 Computes the **Heston model characteristic function** for a complex vector `u`.
 
-\[
+$$
 \phi(u) = \exp(A(u,T) + B(u,T)v_0)
-\]
-
+$$
 Used for Fourier-based pricing and VIX dynamics.
 
 ---
 
 ### `char_func_Heston_number(const complex<double>& u, const VectorXd& para, const VectorXd& v0, double T)`
-Same as above but for a single complex input \( u \).  
+Same as above but for a single complex input  $u$ .  
 Used in analytical components like `spot_Composite_JD`.
 
 ---
@@ -110,10 +109,10 @@ Used in analytical components like `spot_Composite_JD`.
 Builds the **jump-diffusion (JD) component** of the spot variance model, capturing the effect of CGMY-type jumps.
 
 **Outputs:**
-- \( a(v), b, c(v) \): coefficients of linearized VIX approximation
-\[
+- $a(v), b, c(v)$ : coefficients of linearized VIX approximation
+$$
 VIX = a(v) \cdot u_T + b \cdot v_T + c(v)
-\]
+$$
 
 ---
 
@@ -134,17 +133,17 @@ The **core simulation and pricing routine**.
    - Sample variance paths `v_T`, `V_T`, and auxiliary processes `u_T`, `u2_T`.
    - Compute coefficients using `spot_Composite_JD` and `spot_Composite_Heston`.
    - Combine both processes:
-     \[
+    $$
      VIX = (a u_T + b v_T + c) + (a_2 u_{2T} + b_2 v_T + c_2)
-     \]
+    $$
    - Derive VIX futures price:
-     \[
+     $$
      F = 100 \times \mathbb{E}[\sqrt{VIX}]
-     \]
+    $$
    - Compute option prices via Monte Carlo simulation:
-     \[
+    $$
      C(K) = \mathbb{E}[\max(VIX / F - K/F, 0)]
-     \]
+    $$
    - Infer implied volatility via `implied_volatility`.
 
 #### Outputs:
@@ -196,4 +195,4 @@ Used for logging and convergence analysis.
 3. **Run Pricing:**  
    ```cpp
    auto [vol_surf, VIX_model, fut_error] = pricing_CTCM_JD(TK_V, vol_VIX, futures, para);
-
+   
