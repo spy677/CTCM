@@ -1,198 +1,87 @@
-## File Overview
+# Time-changed Lévy Process and Option Pricing Framework
 
-This code contains the following key functional areas:
-
-| Section | Purpose |
-|----------|----------|
-| [1. Utility Functions](#1-utility-functions) | Basic tools such as vector sampling, interpolation, and Bessel/Gamma/Possion draws. |
-| [2. COS Expansion Methods](#2-cos-expansion-methods) | Computes Fourier-Cosine coefficients and characteristic functions for option pricing. |
-| [3. Conditional Variance Simulation](#3-conditional-variance-simulation) | Generates variance paths under the CTCM process. |
-| [4. Heston Characteristic Functions](#4-heston-characteristic-functions) | Analytical solutions for characteristic functions in Heston-type models. |
-| [5. Composite Spot Dynamics](#5-composite-spot-dynamics) | Combines jump-diffusion (JD) and Heston volatility components to approximate VIX process. |
-| [6. Pricing Formula](#6-pricing-formula) | Core simulation and valuation engine for VIX futures and options. |
-| [7. Error Evaluation](#7-error-evaluation) | Calibration objective functions for optimization. |
+This repository implements a numerical framework for **option pricing under time-changed Lévy processes**, following the model of **Carr & Wu (2004, Journal of Financial Economics)**.  
+The code simulates asset dynamics, computes characteristic functions, and prices European-style contingent claims via **Fourier-based (FFT) and Monte Carlo** methods.  
+Key numerical solvers such as **Runge–Kutta 4 (RK4)** are included for solving ODEs in the Laplace transform of random time.
 
 ---
 
-## 1. Utility Functions
+## 🧩 1. Theoretical Background
 
-### `bisect_left(const VectorXd& a, double x)`
-Performs a **binary search** to find the index of the first element in ascending vector `a` that is not less than `x`.  
-Equivalent to Python's `bisect_left`.
+### 1.1 Time-changed Lévy Processes
+A Lévy process \( X_t \) with triplet \( (m, S, P) \) is evaluated at a **stochastic time change** \( T_t \):
+\[
+Y_t = X_{T_t}, \quad T_t = \int_0^t v(s) ds
+\]
+where \( v(t) \) is the **instantaneous activity rate**.  
+This framework allows:
+- **Jumps** (via Lévy process \( X_t \))  
+- **Stochastic volatility** (via random time \( T_t \))  
+- **Leverage effect** (via correlation between \( X_t \) and \( T_t \))
 
-**Usage:** Used in sampling and numerical interpolation.
-
----
-
-### `calculate_x_simu(const VectorXd& rand, const MatrixXd& F, const MatrixXd& x)`
-Generates simulated samples from a given cumulative distribution `F`.  
-Each random number `rand(i)` is mapped to the corresponding segment in `F` and linearly interpolated to produce the simulated variable.
-
-**Inputs:**
-- `rand`: random uniform samples `[0,1]`
-- `F`: cumulative probability matrix
-- `x`: quantile grid
-
-**Output:** A `VectorXd` of simulated values.
+The characteristic function under the leverage-neutral measure \( Q(y) \) is:
+\[
+\phi_Y(y) = E^Q[e^{-T_t C_X(y)}] = L_{T_t}^y(C_X(y))
+\]
+where \( L_{T_t}^y(\cdot) \) denotes the **Laplace transform** of the random time under a complex-valued measure.
 
 ---
 
-### `besseli_ratio(double v, double z)`  
-Computes the ratio $$ I_{v+1}(z) / I_v(z) $$ of modified Bessel functions, required for CIR or Bessel-type processes.
+## ⚙️ 2. Numerical Modules
+
+### 2.1 Lévy Characteristic Exponent
+Implements the **Lévy–Khintchine representation**:
+\[
+C_X(y) = i m y - \frac{1}{2} y^T S y + \int_{\mathbb{R}} (1 - e^{i y x} + i y x 1_{|x|<1}) P(dx)
+\]
+Supports both finite-activity (Merton, Kou) and infinite-activity (VG, NIG, CGMY) jump models.
+
+### 2.2 Activity Rate Dynamics
+The random time process \( T_t \) satisfies:
+\[
+\frac{dT_t}{dt} = v(t)
+\]
+For affine or quadratic specifications (e.g., CIR or OU), the **Laplace transform**:
+\[
+L_{T_t}(\lambda) = \exp[-b(t) v_0 - c(t)]
+\]
+is obtained by solving coupled ODEs for \( b(t) \) and \( c(t) \) using **Runge–Kutta 4 (RK4)** integration.
+
+#### RK4 Implementation
+RK4 numerically integrates:
+\[
+y' = f(t, y)
+\]
+via:
+\[
+y_{n+1} = y_n + \frac{1}{6}(k_1 + 2k_2 + 2k_3 + k_4)
+\]
+with intermediate slopes \( k_i = f(t_i, y_i) \).  
+This solver ensures stability and high-order accuracy for the **b(t), c(t)** ODE system derived from affine or quadratic term structures (Eq. (27) and (28) in Carr & Wu, 2004).
+
+### 2.3 Monte Carlo Simulation
+Monte Carlo paths are generated for:
+\[
+Y_t = X_{T_t}
+\]
+using:
+1. Simulation of Lévy increments \( X_{\Delta t} \)
+2. Random time increments \( T_t \)
+3. Optional correlation between \( X_t \) and \( T_t \)
+
+Option payoffs (calls, puts, binaries) are computed under the **risk-neutral measure**.
+
+### 2.4 FFT-based Option Pricing
+Following **Carr & Madan (1999)** and **Carr & Wu (2004)**:
+\[
+G(k) = \frac{1}{2\pi} \int_{i z_i - \infty}^{i z_i + \infty} e^{-i z k} G(z; a,b,W,c) dz
+\]
+is efficiently evaluated using **Fast Fourier Transform (FFT)** for:
+- European Calls and Puts
+- Binaries
+- Covered Calls
 
 ---
 
-### `sample_bessel(double v, double z)`  
-Samples from a **Bessel distribution** using the above ratio and normal approximation.  
-Used to generate paths of conditional variance under CTCM or CIR processes.
-
----
-
-## 2. COS Expansion Methods
-
-### `calculate_Vk_spx(double L, double A, int N)`
-Computes the **Fourier-Cosine coefficients $V_k$** for a given payoff function, required by the COS pricing method.
-
-### `calculate_chi(double k, double a, double b)`
-Computes the cosine integral part of the Fourier projection.
-
-### `calculate_psi(double k, double a, double b)`
-Computes the sine integral part of the Fourier projection.
-
----
-
-## 3. Conditional Variance Simulation
-
-### `get_quants(const VectorXd& para, double T)`
-Derives **quantitative parameters** for the conditional distribution of volatility under a **CTCM** or **CIR** process.
-
-**Outputs:**
-- `quant`: vector of quantile levels,
-- `gamma_n`, `lambda_n`: shape and non-centrality parameters for chi-square approximation.
-
----
-
-### `get_conditional_V(tuple<VectorXd, VectorXd, VectorXd> quants, double v0, const VectorXd& v_T, double T)`
-Generates the **conditional volatility path  $V_T$ ** given the initial variance  $v_0$  and terminal variance  $v_T$ , using a Gamma–Poisson–Bessel decomposition.
-
----
-
-### `get_X1`, `get_X2`, `get_X3`
-Helper components for `get_conditional_V`, producing:
-- `X1`: Poisson-Gamma mixture term,
-- `X2`: central Gamma term,
-- `X3`: Bessel correction term.
-
----
-
-## 4. Heston Characteristic Functions
-
-### `char_func_Heston(const VectorXcd& u, const VectorXd& para, const VectorXd& v0, double T)`
-Computes the **Heston model characteristic function** for a complex vector `u`.
-
-$$
-\phi(u) = \exp(A(u,T) + B(u,T)v_0)
-$$
-Used for Fourier-based pricing and VIX dynamics.
-
----
-
-### `char_func_Heston_number(const complex<double>& u, const VectorXd& para, const VectorXd& v0, double T)`
-Same as above but for a single complex input  $u$ .  
-Used in analytical components like `spot_Composite_JD`.
-
----
-
-## 5. Composite Spot Dynamics
-
-### `spot_Composite_JD(const VectorXd& para, const VectorXd& v)`
-Builds the **jump-diffusion (JD) component** of the spot variance model, capturing the effect of CGMY-type jumps.
-
-**Outputs:**
-- $a(v), b, c(v)$ : coefficients of linearized VIX approximation
-$$
-VIX = a(v) \cdot u_T + b \cdot v_T + c(v)
-$$
-
----
-
-### `spot_Composite_Heston(const VectorXd& para, const VectorXd& v)`
-Analogous to `spot_Composite_JD`, but for the **pure Heston** stochastic volatility component.
-
----
-
-## 6. Pricing Formula
-
-### `pricing_CTCM_JD(const list<VectorXd>& TK_V, const VectorXd& vol_VIX, const VectorXd& futures, const VectorXd& para)`
-The **core simulation and pricing routine**.
-
-#### Key Steps:
-1. Loop over maturities `t` in `TK_V`.
-2. For each:
-   - Compute variance parameters via `get_quants()`.
-   - Sample variance paths `v_T`, `V_T`, and auxiliary processes `u_T`, `u2_T`.
-   - Compute coefficients using `spot_Composite_JD` and `spot_Composite_Heston`.
-   - Combine both processes:
-    $$
-     VIX = (a u_T + b v_T + c) + (a_2 u_{2T} + b_2 v_T + c_2)
-    $$
-   - Derive VIX futures price:
-     $$
-     F = 100 \times \mathbb{E}[\sqrt{VIX}]
-    $$
-   - Compute option prices via Monte Carlo simulation:
-    $$
-     C(K) = \mathbb{E}[\max(VIX / F - K/F, 0)]
-    $$
-   - Infer implied volatility via `implied_volatility`.
-
-#### Outputs:
-- `vol_surf`: modeled implied volatility surface of VIX options.
-- `VIX_model`: option prices.
-- `mean_fut_error`: mean absolute deviation between model and futures data.
-
----
-
-## 7. Error Evaluation
-
-### `error_function(...)`
-Computes the **scalar calibration loss function** used to fit parameters to observed market data.
-
-**Procedure:**
-1. Construct full parameter vector.
-2. Call `spx_options_pricing_formula_cos_CTCL(...)`.
-3. Compute RMSE and relative errors for both SPX and VIX implied volatilities.
-
-**Output:** single scalar objective value (used in optimization).
-
----
-
-### `error_function2(...)`
-Variant of `error_function` returning **a detailed vector of calibration diagnostics**, including:
-- errors for SPX/VIX,
-- absolute, relative, and mean errors,
-- calibration date,
-- parameter values.
-
-Used for logging and convergence analysis.
-
----
-
-## ⚙️ Dependencies
-
-- **Eigen**: matrix and vector operations  
-- **Boost::math**: root solving and special functions  
-- **Boost::random**: non-central chi-squared, Poisson, Gamma distributions  
-- **csv2**: CSV file reading for external precomputed simulation data  
-- **C++17 STL**: tuple, list, random engines, complex numbers  
-
----
-
-## 🧩 Typical Workflow
-
-1. **Parameter Initialization:** set `para` vector (model parameters).
-2. **Data Loading:** read option maturities `TK_S`, `TK_V`, and implied vol surfaces.
-3. **Run Pricing:**  
-   ```cpp
-   auto [vol_surf, VIX_model, fut_error] = pricing_CTCM_JD(TK_V, vol_VIX, futures, para);
+## 🧮 3. Implementation Overview
    
